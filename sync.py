@@ -13,16 +13,16 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ── Config din variabile de mediu ─────────────────────────────────────────────
-SMARTBILL_EMAIL    = os.environ["SMARTBILL_EMAIL"]
-SMARTBILL_TOKEN    = os.environ["SMARTBILL_TOKEN"]
-SMARTBILL_CIF      = os.environ["SMARTBILL_CIF"]       # CIF-ul firmei tale
+SMARTBILL_EMAIL     = os.environ["SMARTBILL_EMAIL"]
+SMARTBILL_TOKEN     = os.environ["SMARTBILL_TOKEN"]
+SMARTBILL_CIF       = os.environ["SMARTBILL_CIF"]
 SMARTBILL_WAREHOUSE = os.environ.get("SMARTBILL_WAREHOUSE", "GESTIUNE MARFURI")
 
-WIX_API_KEY        = os.environ["WIX_API_KEY"]
-WIX_ACCOUNT_ID     = os.environ["WIX_ACCOUNT_ID"]
-WIX_SITE_ID        = os.environ["WIX_SITE_ID"]
+WIX_API_KEY         = os.environ["WIX_API_KEY"]
+WIX_ACCOUNT_ID      = os.environ["WIX_ACCOUNT_ID"]
+WIX_SITE_ID         = os.environ["WIX_SITE_ID"]
 
-SYNC_INTERVAL_SEC  = int(os.getenv("SYNC_INTERVAL_SEC", "600"))  # 10 minute
+SYNC_INTERVAL_SEC   = int(os.getenv("SYNC_INTERVAL_SEC", "600"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -30,31 +30,23 @@ SYNC_INTERVAL_SEC  = int(os.getenv("SYNC_INTERVAL_SEC", "600"))  # 10 minute
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_smartbill_stocks() -> dict[str, float]:
-    """
-    Returnează {productCode: cantitate} pentru toate produsele din SmartBill.
-    Endpoint: GET /stocks
-    Parametri: cif, date (azi), warehouseName
-    Răspuns: { products: [ { productCode, productName, quantity, ... } ] }
-    """
+    """Returnează {productCode: cantitate} din gestiunea SmartBill."""
     url = "https://ws.smartbill.ro/SBORO/api/stocks"
     params = {
         "cif":           SMARTBILL_CIF,
         "date":          datetime.now().strftime("%Y-%m-%d"),
         "warehouseName": SMARTBILL_WAREHOUSE,
     }
-    headers = {"Accept": "application/json"}
-
     resp = requests.get(
-        url,
-        params=params,
-        headers=headers,
+        url, params=params,
+        headers={"Accept": "application/json"},
         auth=(SMARTBILL_EMAIL, SMARTBILL_TOKEN),
         timeout=30
     )
     resp.raise_for_status()
     data = resp.json()
 
-    # Produsele sunt in data["list"][i]["products"]
+    # Structura: data["list"][i]["products"][j]
     stocks: dict[str, float] = {}
     for warehouse_entry in data.get("list", []):
         for product in warehouse_entry.get("products", []):
@@ -71,64 +63,70 @@ def get_smartbill_stocks() -> dict[str, float]:
 # WIX
 # ══════════════════════════════════════════════════════════════════════════════
 
-WIX_HEADERS = {
-    "Authorization": f"Bearer {os.environ.get('WIX_API_KEY', '')}",
-    "wix-account-id": os.environ.get("WIX_ACCOUNT_ID", ""),
-    "wix-site-id":    os.environ.get("WIX_SITE_ID", ""),
-    "Content-Type":   "application/json",
-}
+def wix_headers():
+    return {
+        "Authorization": WIX_API_KEY,
+        "wix-account-id": WIX_ACCOUNT_ID,
+        "wix-site-id":    WIX_SITE_ID,
+        "Content-Type":   "application/json",
+    }
 
 def get_wix_products() -> dict[str, dict]:
     """
-    Returnează {sku: {inventoryItemId, variantId, currentQuantity}}
-    pentru toate produsele din Wix Stores.
+    Returnează {sku: {productId, variantId, currentQuantity}}
+    folosind Wix Stores Products API v1.
     """
-    url = "https://www.wixapis.com/stores/v1/inventory/items/query"
+    url = "https://www.wixapis.com/stores/v1/products/query"
     products: dict[str, dict] = {}
-    cursor = None
+    offset = 0
+    limit = 100
 
     while True:
-        body: dict = {"query": {"paging": {"limit": 100}}}
-        if cursor:
-            body["query"]["cursorPaging"] = {"cursor": cursor}
-
-        resp = requests.post(url, json=body, headers=WIX_HEADERS, timeout=30)
+        body = {
+            "query": {
+                "paging": {"limit": limit, "offset": offset}
+            },
+            "includeVariants": True
+        }
+        resp = requests.post(url, json=body, headers=wix_headers(), timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
-        for item in data.get("inventoryItems", []):
-            inventory_item_id = item.get("id")
-            for variant in item.get("variants", []):
-                sku = variant.get("variantFields", {}).get("sku", "").strip()
+        items = data.get("products", [])
+        for product in items:
+            product_id = product.get("id")
+            variants = product.get("variants", [])
+            for variant in variants:
+                sku = variant.get("variant", {}).get("sku", "").strip()
+                if not sku:
+                    sku = product.get("sku", "").strip()
                 if not sku:
                     continue
+                stock = variant.get("stock", {})
                 products[sku] = {
-                    "inventoryItemId": inventory_item_id,
-                    "variantId":       variant.get("variantId"),
-                    "currentQuantity": variant.get("quantity", 0),
+                    "productId":       product_id,
+                    "variantId":       variant.get("id"),
+                    "currentQuantity": stock.get("quantity", 0),
                 }
 
-        cursor = data.get("metadata", {}).get("cursors", {}).get("next")
-        if not cursor:
+        if len(items) < limit:
             break
+        offset += limit
 
     log.info(f"Wix: {len(products)} variante găsite")
     return products
 
 
-def update_wix_inventory(inventory_item_id: str, variant_id: str, quantity: int):
-    """Setează cantitatea exactă pentru un variant în Wix."""
-    url = f"https://www.wixapis.com/stores/v1/inventory/items/{inventory_item_id}/variants/set"
+def update_wix_inventory(product_id: str, variant_id: str, quantity: int):
+    """Setează cantitatea pentru un variant în Wix."""
+    url = f"https://www.wixapis.com/stores/v1/products/{product_id}/variants/{variant_id}"
     body = {
-        "inventoryItemId": inventory_item_id,
-        "variants": [
-            {
-                "variantId": variant_id,
-                "quantity":  quantity,
-            }
-        ]
+        "stock": {
+            "quantity":       quantity,
+            "trackInventory": True
+        }
     }
-    resp = requests.patch(url, json=body, headers=WIX_HEADERS, timeout=30)
+    resp = requests.patch(url, json=body, headers=wix_headers(), timeout=30)
     resp.raise_for_status()
 
 
@@ -141,7 +139,7 @@ def sync_once():
     log.info(f"🔄 Sincronizare pornită la {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        sb_stocks   = get_smartbill_stocks()
+        sb_stocks    = get_smartbill_stocks()
         wix_products = get_wix_products()
     except Exception as e:
         log.error(f"Eroare la preluarea datelor: {e}")
@@ -155,8 +153,8 @@ def sync_once():
             skipped += 1
             continue
 
-        sb_qty   = int(sb_stocks[sku])
-        wix_qty  = int(wix_info["currentQuantity"] or 0)
+        sb_qty  = int(sb_stocks[sku])
+        wix_qty = int(wix_info["currentQuantity"] or 0)
 
         if sb_qty == wix_qty:
             log.debug(f"  OK   {sku} — stoc identic ({sb_qty})")
@@ -164,7 +162,7 @@ def sync_once():
 
         try:
             update_wix_inventory(
-                wix_info["inventoryItemId"],
+                wix_info["productId"],
                 wix_info["variantId"],
                 sb_qty
             )
