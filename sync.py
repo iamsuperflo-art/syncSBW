@@ -31,13 +31,15 @@ SYNC_INTERVAL_SEC  = int(os.getenv("SYNC_INTERVAL_SEC", "600"))  # 10 minute
 
 def get_smartbill_stocks() -> dict[str, float]:
     """
-    Returnează {sku: cantitate} pentru toate produsele din SmartBill.
-    Endpoint: /warehouse/product/stock
-    Documentație: https://api.smartbill.ro
+    Returnează {productCode: cantitate} pentru toate produsele din SmartBill.
+    Endpoint: GET /stocks
+    Parametri: cif, date (azi), warehouseName
+    Răspuns: { products: [ { productCode, productName, quantity, ... } ] }
     """
-    url = "https://ws.smartbill.ro/SBORO/api/warehouse/product/stock"
+    url = "https://ws.smartbill.ro/SBORO/api/stocks"
     params = {
         "cif":           SMARTBILL_CIF,
+        "date":          datetime.now().strftime("%Y-%m-%d"),
         "warehouseName": SMARTBILL_WAREHOUSE,
     }
     headers = {"Accept": "application/json"}
@@ -53,9 +55,8 @@ def get_smartbill_stocks() -> dict[str, float]:
     data = resp.json()
 
     stocks: dict[str, float] = {}
-    for product in data.get("list", []):
-        # SmartBill returnează codul produsului în câmpul "productCode"
-        sku = (product.get("productCode") or product.get("code") or "").strip()
+    for product in data.get("products", []):
+        sku = (product.get("productCode") or "").strip()
         qty = float(product.get("quantity", 0) or 0)
         if sku:
             stocks[sku] = qty
