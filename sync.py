@@ -89,6 +89,8 @@ def get_wix_products() -> dict[str, dict]:
             "includeVariants": True
         }
         resp = requests.post(url, json=body, headers=wix_headers(), timeout=30)
+        if not resp.ok:
+            log.error(f"DEBUG Wix error {resp.status_code}: {resp.text[:500]}")
         resp.raise_for_status()
         data = resp.json()
 
