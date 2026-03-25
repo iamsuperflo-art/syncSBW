@@ -54,23 +54,14 @@ def get_smartbill_stocks() -> dict[str, float]:
     resp.raise_for_status()
     data = resp.json()
 
+    # Produsele sunt in data["list"][i]["products"]
     stocks: dict[str, float] = {}
-    for product in data.get("products", []):
-        sku = (product.get("productCode") or "").strip()
-        qty = float(product.get("quantity", 0) or 0)
-        if sku:
-            stocks[sku] = qty
-
-    # DEBUG — afișează primele 3 produse brute din răspuns
-    raw_products = data.get("products", [])
-    log.info(f"DEBUG raw response keys: {list(data.keys())}")
-    log.info(f"DEBUG errorText: {data.get('errorText')}")
-    log.info(f"DEBUG message: {data.get('message')}")
-    log.info(f"DEBUG list length: {len(data.get('list', []))}")
-    raw_list = data.get("list", [])
-    if raw_list:
-        log.info(f"DEBUG primul element din list: {raw_list[0]}")
-    log.info(f"DEBUG total produse in raspuns: {len(raw_products)}")
+    for warehouse_entry in data.get("list", []):
+        for product in warehouse_entry.get("products", []):
+            sku = (product.get("productCode") or "").strip()
+            qty = float(product.get("quantity", 0) or 0)
+            if sku:
+                stocks[sku] = qty
 
     log.info(f"SmartBill: {len(stocks)} produse preluate din '{SMARTBILL_WAREHOUSE}'")
     return stocks
