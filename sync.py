@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 SMARTBILL_EMAIL    = os.environ["SMARTBILL_EMAIL"]
 SMARTBILL_TOKEN    = os.environ["SMARTBILL_TOKEN"]
 SMARTBILL_CIF      = os.environ["SMARTBILL_CIF"]       # CIF-ul firmei tale
+SMARTBILL_WAREHOUSE = os.environ.get("SMARTBILL_WAREHOUSE", "GESTIUNE MARFURI")
 
 WIX_API_KEY        = os.environ["WIX_API_KEY"]
 WIX_ACCOUNT_ID     = os.environ["WIX_ACCOUNT_ID"]
@@ -31,10 +32,14 @@ SYNC_INTERVAL_SEC  = int(os.getenv("SYNC_INTERVAL_SEC", "600"))  # 10 minute
 def get_smartbill_stocks() -> dict[str, float]:
     """
     Returnează {sku: cantitate} pentru toate produsele din SmartBill.
+    Endpoint: /warehouse/product/stock
     Documentație: https://api.smartbill.ro
     """
-    url = "https://ws.smartbill.ro/SBORO/api/products"
-    params = {"cif": SMARTBILL_CIF}
+    url = "https://ws.smartbill.ro/SBORO/api/warehouse/product/stock"
+    params = {
+        "cif":           SMARTBILL_CIF,
+        "warehouseName": SMARTBILL_WAREHOUSE,
+    }
     headers = {"Accept": "application/json"}
 
     resp = requests.get(
@@ -49,12 +54,13 @@ def get_smartbill_stocks() -> dict[str, float]:
 
     stocks: dict[str, float] = {}
     for product in data.get("list", []):
-        sku = product.get("code", "").strip()
+        # SmartBill returnează codul produsului în câmpul "productCode"
+        sku = (product.get("productCode") or product.get("code") or "").strip()
         qty = float(product.get("quantity", 0) or 0)
         if sku:
             stocks[sku] = qty
 
-    log.info(f"SmartBill: {len(stocks)} produse preluate")
+    log.info(f"SmartBill: {len(stocks)} produse preluate din '{SMARTBILL_WAREHOUSE}'")
     return stocks
 
 
