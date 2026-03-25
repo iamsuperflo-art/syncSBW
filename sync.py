@@ -64,9 +64,13 @@ def get_smartbill_stocks() -> dict[str, float]:
     # DEBUG — afișează primele 3 produse brute din răspuns
     raw_products = data.get("products", [])
     log.info(f"DEBUG raw response keys: {list(data.keys())}")
+    log.info(f"DEBUG errorText: {data.get('errorText')}")
+    log.info(f"DEBUG message: {data.get('message')}")
+    log.info(f"DEBUG list length: {len(data.get('list', []))}")
+    raw_list = data.get("list", [])
+    if raw_list:
+        log.info(f"DEBUG primul element din list: {raw_list[0]}")
     log.info(f"DEBUG total produse in raspuns: {len(raw_products)}")
-    if raw_products:
-        log.info(f"DEBUG primul produs: {raw_products[0]}")
 
     log.info(f"SmartBill: {len(stocks)} produse preluate din '{SMARTBILL_WAREHOUSE}'")
     return stocks
