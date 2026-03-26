@@ -120,22 +120,23 @@ def get_wix_products() -> dict[str, dict]:
 
 
 def update_wix_inventory(product_id: str, variant_id: str, quantity: int):
-    """Setează cantitatea pentru un produs/variant în Wix."""
-    NULL_UUID = "00000000-0000-0000-0000-000000000000"
-
-    if variant_id and variant_id != NULL_UUID:
-        # Produs cu variante
-        url = f"https://www.wixapis.com/stores/v1/products/{product_id}/variants/{variant_id}"
-        body = {"stock": {"quantity": quantity, "trackInventory": True}}
-        resp = requests.patch(url, json=body, headers=wix_headers(), timeout=30)
-    else:
-        # Produs simplu (fara variante) — actualizam direct pe produs
-        url = f"https://www.wixapis.com/stores/v1/products/{product_id}"
-        body = {"product": {"stock": {"quantity": quantity, "trackInventory": True}}}
-        resp = requests.patch(url, json=body, headers=wix_headers(), timeout=30)
-
+    """Setează cantitatea pentru un produs/variant în Wix via Inventory v2 API."""
+    url = f"https://www.wixapis.com/stores/v2/inventoryItems/product/{product_id}"
+    body = {
+        "inventoryItem": {
+            "productId": product_id,
+            "trackQuantity": True,
+            "variants": [
+                {
+                    "variantId": variant_id,
+                    "quantity": quantity,
+                    "inStock": quantity > 0,
+                }
+            ]
+        }
+    }
+    resp = requests.patch(url, json=body, headers=wix_headers(), timeout=30)
     resp.raise_for_status()
-    log.info(f"DEBUG update response {resp.status_code}: {resp.text[:300]}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
