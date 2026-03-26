@@ -103,6 +103,7 @@ def get_wix_products() -> dict[str, dict]:
                 if not sku:
                     sku = product.get("sku", "").strip()
                 if not sku:
+                    log.info(f"  SKIP (fara SKU in Wix) produs: {product.get('name','?')[:50]}")
                     continue
                 stock = variant.get("stock", {})
                 products[sku] = {
@@ -158,7 +159,7 @@ def sync_once():
 
     for sku, wix_info in wix_products.items():
         if sku not in sb_stocks:
-            log.debug(f"  SKIP {sku} — nu există în SmartBill")
+            log.info(f"  SKIP {sku} — SKU nu există în SmartBill")
             skipped += 1
             continue
 
@@ -166,7 +167,7 @@ def sync_once():
         wix_qty = int(wix_info["currentQuantity"] or 0)
 
         if sb_qty == wix_qty:
-            log.debug(f"  OK   {sku} — stoc identic ({sb_qty})")
+            log.info(f"  OK   {sku} — stoc identic ({sb_qty})")
             continue
 
         try:
