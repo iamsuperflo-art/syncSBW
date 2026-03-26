@@ -95,6 +95,7 @@ def get_wix_products() -> dict[str, dict]:
         data = resp.json()
 
         items = data.get("products", [])
+        log.info(f"DEBUG paginare: offset={offset}, items primite={len(items)}, total acumulat={len(products)}")
         for product in items:
             product_id = product.get("id")
             variants = product.get("variants", [])
