@@ -135,6 +135,7 @@ def update_wix_inventory(product_id: str, variant_id: str, quantity: int):
         resp = requests.patch(url, json=body, headers=wix_headers(), timeout=30)
 
     resp.raise_for_status()
+    log.info(f"DEBUG update response {resp.status_code}: {resp.text[:300]}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
